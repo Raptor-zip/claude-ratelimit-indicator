@@ -1,0 +1,13 @@
+[Unit]
+Description=Fetch Claude rate limit usage periodically
+
+[Timer]
+# Once shortly after the timer is enabled / after login
+OnActiveSec=10s
+# Then every 2 minutes after the previous run finished
+OnUnitInactiveSec=2min
+AccuracySec=10s
+Unit=claude-usage.service
+
+[Install]
+WantedBy=timers.target
