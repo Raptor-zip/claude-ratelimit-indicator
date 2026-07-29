@@ -177,12 +177,19 @@ class UsageRow extends PopupMenu.PopupBaseMenuItem {
             y_align: Clutter.ActorAlign.FILL,
         });
         for (let i = 0; i < count; i++) {
+            // 均等幅の区画（余白を分け合うだけの透明な箱）
             this._ticks.add_child(new St.Widget({
                 x_expand: true,
                 y_expand: true,
-                // 最後の区画の右端はトラックの縁なので線を引かない
-                style_class: i < count - 1 ? 'claude-usage-tick' : '',
             }));
+            // 区画のあいだにだけ線を引く（右端はトラックの縁なので不要）
+            if (i < count - 1) {
+                this._ticks.add_child(new St.Widget({
+                    style_class: 'claude-usage-tick',
+                    x_expand: false,
+                    y_expand: true,
+                }));
+            }
         }
         // 塗りより後に足して上に重ねる
         this._track.add_child(this._ticks);
