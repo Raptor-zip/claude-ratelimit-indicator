@@ -3,9 +3,7 @@
 Shows your Claude usage limits — the 5-hour session window and the weekly window —
 right next to the clock in the GNOME top bar.
 
-```
-                    15:24   5h 11% · 7d 24%
-```
+![The indicator in the top bar, with its menu open](docs/screenshot.png)
 
 Click it for a breakdown: usage bars, time until reset, and per-model weekly scopes.
 The weekly bar is divided into 7 segments so you can see at a glance whether you are
@@ -105,9 +103,7 @@ MIT
 Claude のレートリミット（5 時間セッション枠 / 週間枠）の使用率を、GNOME トップバーの
 時計の横に表示する GNOME Shell 42 拡張機能です。
 
-```
-                    15:24   5h 11% · 7d 24%
-```
+![トップバーのインジケーターとメニューを開いた状態](docs/screenshot.png)
 
 クリックすると、使用率バー・リセットまでの残り時間・モデル別の週間スコープ枠が開きます。
 週間バーは 7 分割の目安線入りで、1 日あたりのペースに対して先行しているか遅れているかが
