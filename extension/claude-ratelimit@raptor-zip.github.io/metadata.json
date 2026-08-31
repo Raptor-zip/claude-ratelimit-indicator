@@ -1,8 +1,0 @@
-{
-  "uuid": "claude-ratelimit@raptor-zip.github.io",
-  "name": "Claude Rate Limit",
-  "description": "Show Claude usage limits (5-hour session window and weekly window) next to the clock in the GNOME top bar.",
-  "shell-version": ["42"],
-  "version": 1,
-  "url": "https://github.com/Raptor-zip/claude-ratelimit-indicator"
-}

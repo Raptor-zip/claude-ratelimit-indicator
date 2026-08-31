@@ -1,0 +1,7 @@
+[Unit]
+Description=Fetch AI CLI rate limit usage (Claude/Codex/Kimi/Antigravity) into the local cache
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/ai-usage-fetch

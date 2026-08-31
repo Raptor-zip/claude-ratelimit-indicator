@@ -1,0 +1,8 @@
+{
+  "uuid": "ai-ratelimit@raptor-zip.github.io",
+  "name": "AI Rate Limit",
+  "description": "Show AI CLI usage limits (5-hour session window and weekly window) for Claude, Codex, Kimi and Antigravity next to the clock in the GNOME top bar.",
+  "shell-version": ["42"],
+  "version": 1,
+  "url": "https://github.com/Raptor-zip/ai-ratelimit-indicator"
+}

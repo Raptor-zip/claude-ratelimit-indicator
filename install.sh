@@ -1,21 +1,38 @@
 #!/usr/bin/env bash
-# Install / uninstall the Claude Rate Limit indicator.
+# Install / uninstall the AI Rate Limit indicator.
 set -euo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-UUID="claude-ratelimit@raptor-zip.github.io"
+UUID="ai-ratelimit@raptor-zip.github.io"
 EXT_DIR="$HOME/.local/share/gnome-shell/extensions/$UUID"
 BIN_DIR="$HOME/.local/bin"
 UNIT_DIR="$HOME/.config/systemd/user"
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}"
 
-uninstall() {
+# claude-* 時代の旧バージョンの残り物
+OLD_UUID="claude-ratelimit@raptor-zip.github.io"
+OLD_UNITS=("claude-usage.timer" "claude-usage.service")
+
+remove_legacy() {
     systemctl --user disable --now claude-usage.timer 2>/dev/null || true
     rm -f "$UNIT_DIR/claude-usage.timer" "$UNIT_DIR/claude-usage.service"
+    gnome-extensions disable "$OLD_UUID" 2>/dev/null || true
+    rm -rf "$HOME/.local/share/gnome-shell/extensions/$OLD_UUID"
+    rm -f "$BIN_DIR/claude-usage-fetch"
+    rm -rf "$CACHE_DIR/claude-usage"
+}
+
+uninstall() {
+    remove_legacy
+
+    systemctl --user disable --now ai-usage.timer 2>/dev/null || true
+    rm -f "$UNIT_DIR/ai-usage.timer" "$UNIT_DIR/ai-usage.service"
     systemctl --user daemon-reload 2>/dev/null || true
 
     gnome-extensions disable "$UUID" 2>/dev/null || true
     rm -rf "$EXT_DIR"
-    rm -f "$BIN_DIR/claude-usage-fetch"
+    rm -f "$BIN_DIR/ai-usage-fetch"
+    rm -rf "$CACHE_DIR/ai-usage"
 
     echo "Uninstalled. Restart GNOME Shell (Alt+F2 -> r on X11) to drop the indicator."
 }
@@ -23,7 +40,7 @@ uninstall() {
 install_all() {
     # Fetcher -> ~/.local/bin so nothing depends on where this repo lives
     mkdir -p "$BIN_DIR"
-    install -m 755 "$SRC/bin/claude-usage-fetch.py" "$BIN_DIR/claude-usage-fetch"
+    install -m 755 "$SRC/bin/ai-usage-fetch.py" "$BIN_DIR/ai-usage-fetch"
 
     # GNOME Shell extension (copied, not symlinked: some setups refuse symlinks)
     mkdir -p "$EXT_DIR"
@@ -35,19 +52,23 @@ install_all() {
 
     # systemd user timer
     mkdir -p "$UNIT_DIR"
-    install -m 644 "$SRC/systemd/claude-usage.service" "$SRC/systemd/claude-usage.timer" "$UNIT_DIR/"
+    install -m 644 "$SRC/systemd/ai-usage.service" "$SRC/systemd/ai-usage.timer" "$UNIT_DIR/"
     systemctl --user daemon-reload
-    systemctl --user enable --now claude-usage.timer
+    systemctl --user enable --now ai-usage.timer
 
     # First fetch, so the panel has something to show right away
-    "$BIN_DIR/claude-usage-fetch" || true
+    "$BIN_DIR/ai-usage-fetch" || true
+
+    # 新しいものを入れてから旧バージョンを掃除（旧タイマーの二重実行を防ぐ）
+    remove_legacy
+    systemctl --user daemon-reload
 
     cat <<EOF
 
 Installed:
   extension : $EXT_DIR
-  fetcher   : $BIN_DIR/claude-usage-fetch
-  timer     : $UNIT_DIR/claude-usage.timer (every 2 minutes)
+  fetcher   : $BIN_DIR/ai-usage-fetch
+  timer     : $UNIT_DIR/ai-usage.timer (every 2 minutes)
 
 To activate:
   1) Restart GNOME Shell: Alt+F2 -> r -> Enter  (X11 only; on Wayland, log out and back in)

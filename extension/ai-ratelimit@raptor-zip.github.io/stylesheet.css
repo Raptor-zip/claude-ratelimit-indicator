@@ -1,0 +1,106 @@
+.ai-usage-panel-label {
+    padding: 0 6px;
+    font-feature-settings: "tnum";
+}
+
+.ai-usage-panel-label.ai-usage-warn {
+    color: #f5c211;
+}
+
+.ai-usage-panel-label.ai-usage-crit {
+    color: #ff7b63;
+    font-weight: bold;
+}
+
+.ai-usage-panel-label.ai-usage-stale {
+    color: rgba(255, 255, 255, 0.45);
+}
+
+/* 2x2 グリッドのメニュー項目（余白を詰めて背を低くする） */
+.ai-provider-grid-item {
+    padding: 2px 6px;
+}
+
+.ai-provider-grid {
+}
+
+.ai-provider-cell {
+    spacing: 1px;
+    padding: 2px 8px;
+    min-width: 220px;
+}
+
+.ai-provider-name {
+    font-weight: bold;
+    font-size: 0.9em;
+    color: rgba(255, 255, 255, 0.75);
+}
+
+.ai-bar-row {
+    spacing: 6px;
+}
+
+.ai-bar-label {
+    font-size: 0.85em;
+    color: rgba(255, 255, 255, 0.65);
+}
+
+.ai-bar-pct {
+    font-size: 0.85em;
+    font-feature-settings: "tnum";
+    width: 36px;
+    text-align: right;
+}
+
+.ai-bar-pct.ai-usage-warn {
+    color: #f5c211;
+}
+
+.ai-bar-pct.ai-usage-crit {
+    color: #ff7b63;
+    font-weight: bold;
+}
+
+.ai-mini-bar-track {
+    background-color: rgba(255, 255, 255, 0.15);
+    border-radius: 3px;
+    height: 7px;
+    width: 110px;
+}
+
+.ai-mini-bar-fill {
+    background-color: #62a0ea;
+    border-radius: 3px;
+    height: 7px;
+}
+
+.ai-mini-bar-fill.ai-usage-warn {
+    background-color: #f5c211;
+}
+
+.ai-mini-bar-fill.ai-usage-crit {
+    background-color: #ff7b63;
+}
+
+/* 週間枠を 7 等分する目安線（塗りの上に重ねる）
+ * St は border-right のようなショートハンドを描いてくれないことがあるので、
+ * 細い矩形の background-color として引く */
+.ai-usage-tick {
+    background-color: rgba(0, 0, 0, 0.55);
+    width: 2px;
+    min-width: 2px;
+    height: 7px;
+}
+
+.ai-cell-sub {
+    font-size: 0.75em;
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.ai-cell-sub.ai-cell-error {
+    color: #ff7b63;
+}
+
+.ai-usage-status {
+    font-size: 0.85em;
+}

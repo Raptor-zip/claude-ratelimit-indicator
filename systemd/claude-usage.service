@@ -1,7 +1,0 @@
-[Unit]
-Description=Fetch Claude rate limit usage into the local cache
-After=network-online.target
-
-[Service]
-Type=oneshot
-ExecStart=%h/.local/bin/claude-usage-fetch
