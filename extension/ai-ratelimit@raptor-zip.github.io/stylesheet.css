@@ -27,7 +27,7 @@
 .ai-provider-cell {
     spacing: 1px;
     padding: 2px 8px;
-    min-width: 220px;
+    width: 220px;
 }
 
 .ai-provider-name {
@@ -61,11 +61,16 @@
     font-weight: bold;
 }
 
+.ai-mini-bar {
+    width: 110px;
+    height: 11px;
+}
+
 .ai-mini-bar-track {
     background-color: rgba(255, 255, 255, 0.15);
     border-radius: 3px;
-    height: 7px;
     width: 110px;
+    height: 7px;
 }
 
 .ai-mini-bar-fill {
@@ -80,6 +85,15 @@
 
 .ai-mini-bar-fill.ai-usage-crit {
     background-color: #ff7b63;
+}
+
+/* リセットまで均等に使う場合の、現在時刻における理想使用率 */
+.ai-ideal-marker {
+    background-color: rgba(255, 255, 255, 0.95);
+    width: 2px;
+    min-width: 2px;
+    height: 11px;
+    border-radius: 1px;
 }
 
 /* 週間枠を 7 等分する目安線（塗りの上に重ねる）
@@ -103,4 +117,16 @@
 
 .ai-usage-status {
     font-size: 0.85em;
+}
+
+.ai-usage-footer {
+    spacing: 12px;
+}
+
+.ai-usage-status-label {
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.ai-usage-refresh-button {
+    padding: 3px 8px;
 }

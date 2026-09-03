@@ -7,7 +7,7 @@
  */
 'use strict';
 
-const { Clutter, Gio, GLib, GObject, St } = imports.gi;
+const { Clutter, Gio, GLib, GObject, Pango, St } = imports.gi;
 
 const Main = imports.ui.main;
 const PanelMenu = imports.ui.panelMenu;
@@ -22,9 +22,9 @@ const PROVIDERS = [
     { id: 'claude', name: 'Claude', short: 'Cl' },
     { id: 'codex', name: 'Codex', short: 'Cx' },
     { id: 'kimi', name: 'Kimi', short: 'Km' },
+    { id: 'agy', name: 'Antigravity', short: 'Ag' },
     { id: 'kimi2', name: 'Kimi (2)', short: 'K2' },
     { id: 'kimi3', name: 'Kimi (3)', short: 'K3' },
-    { id: 'agy', name: 'Antigravity', short: 'Ag' },
 ];
 
 // メニューのグリッド列数（2 = 2x2）
@@ -48,6 +48,13 @@ const STALE_SECONDS = 15 * 60;
 
 const WARN_PCT = 60;
 const CRIT_PCT = 85;
+
+const FIVE_HOUR_SECONDS = 5 * 60 * 60;
+const SEVEN_DAY_SECONDS = 7 * 24 * 60 * 60;
+const MINI_BAR_WIDTH = 110;
+const MINI_BAR_HEIGHT = 7;
+const MINI_BAR_OVERLAY_HEIGHT = 11;
+const IDEAL_MARKER_WIDTH = 2;
 
 // セルの補足行・エラー行はこの文字数で切り詰める（メニューが伸びすぎないように）
 const SUB_MAX_CHARS = 40;
@@ -123,62 +130,102 @@ function formatClock(epochSeconds) {
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
+/* 現在時刻までに使ってよい理想使用率（リセット時に 100% になる均等ペース） */
+function idealUsagePct(resetsAt, windowSeconds) {
+    if (typeof resetsAt !== 'number' || !isFinite(resetsAt) ||
+        typeof windowSeconds !== 'number' || !isFinite(windowSeconds) ||
+        windowSeconds <= 0)
+        return null;
+
+    const remaining = resetsAt - Date.now() / 1000;
+    if (remaining <= 0)
+        return null;
+    return Math.max(0, Math.min(100, (1 - remaining / windowSeconds) * 100));
+}
+
+function scopedWindowSeconds(item) {
+    if (typeof item.window_seconds === 'number' && isFinite(item.window_seconds))
+        return item.window_seconds;
+    // 更新前のキャッシュとの互換用。Claude の scoped は週間枠、AGY は末尾に 5h/7d が付く。
+    return /\b5h$/.test(item.label || '') ? FIVE_HOUR_SECONDS : SEVEN_DAY_SECONDS;
+}
+
 /* 小さな使用率バー（divisions > 1 で等分の目安線つき） */
 class MiniBar {
     constructor(divisions) {
+        // CSS の px は HiDPI 倍率で拡大されるが、FixedLayout の座標値は拡大されない。
+        // 背景とオーバーレイを同じ座標系に揃えるため、固定座標側へ倍率を掛ける。
+        this._scaleFactor = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+
+        // すべての要素を同じ固定座標系に置き、内容による横幅の変化を防ぐ。
+        this._actor = new St.Widget({
+            style_class: 'ai-mini-bar',
+            layout_manager: new Clutter.FixedLayout(),
+            x_expand: false,
+        });
+
         this._track = new St.Widget({
             style_class: 'ai-mini-bar-track',
-            layout_manager: new Clutter.BinLayout(),
-            y_align: Clutter.ActorAlign.CENTER,
         });
+        this._track.set_position(0, this._scaled(
+            (MINI_BAR_OVERLAY_HEIGHT - MINI_BAR_HEIGHT) / 2
+        ));
+        this._actor.add_child(this._track);
 
-        // 塗りは BoxLayout に入れて必ず左端から伸ばす
-        const fillBox = new St.BoxLayout({
-            x_expand: true,
-            y_expand: true,
-            x_align: Clutter.ActorAlign.FILL,
-            y_align: Clutter.ActorAlign.FILL,
-        });
         this._fill = new St.Widget({
             style_class: 'ai-mini-bar-fill',
-            x_expand: false,
-            y_expand: true,
         });
-        fillBox.add_child(this._fill);
-        this._track.add_child(fillBox);
+        this._fill.set_position(0, this._scaled(
+            (MINI_BAR_OVERLAY_HEIGHT - MINI_BAR_HEIGHT) / 2
+        ));
+        this._actor.add_child(this._fill);
 
         if (divisions > 1) {
-            const ticks = new St.BoxLayout({
-                x_expand: true,
-                y_expand: true,
-                x_align: Clutter.ActorAlign.FILL,
-                y_align: Clutter.ActorAlign.FILL,
-            });
-            for (let i = 0; i < divisions; i++) {
-                ticks.add_child(new St.Widget({ x_expand: true, y_expand: true }));
-                if (i < divisions - 1) {
-                    ticks.add_child(new St.Widget({
-                        style_class: 'ai-usage-tick',
-                        x_expand: false,
-                        y_expand: true,
-                    }));
-                }
+            for (let i = 1; i < divisions; i++) {
+                const tick = new St.Widget({ style_class: 'ai-usage-tick' });
+                tick.set_position(
+                    this._scaled(i * MINI_BAR_WIDTH / divisions - 1),
+                    this._scaled((MINI_BAR_OVERLAY_HEIGHT - MINI_BAR_HEIGHT) / 2)
+                );
+                this._actor.add_child(tick);
             }
-            // 塗りより後に足して上に重ねる
-            this._track.add_child(ticks);
         }
+
+        // 理想線は最後に追加して、塗りと日区切りより手前に描く。
+        this._ideal = new St.Widget({
+            style_class: 'ai-ideal-marker',
+        });
+        this._actor.add_child(this._ideal);
+    }
+
+    _scaled(cssPixels) {
+        return Math.round(cssPixels * this._scaleFactor);
     }
 
     get actor() {
-        return this._track;
+        return this._actor;
     }
 
-    setPct(pct) {
+    setPct(pct, idealPct) {
         const ratio = typeof pct === 'number' && isFinite(pct)
             ? Math.max(0, Math.min(100, pct)) : 0;
-        // トラック幅は stylesheet.css で固定（110px）
-        this._fill.style = `width: ${Math.max(ratio * 1.1, ratio > 0 ? 2 : 0)}px;`;
+        this._fill.set_width(this._scaled(Math.max(
+            ratio * MINI_BAR_WIDTH / 100,
+            ratio > 0 ? 2 : 0
+        )));
         this._fill.style_class = `ai-mini-bar-fill ${severityClass(pct)}`.trim();
+
+        if (typeof idealPct === 'number' && isFinite(idealPct)) {
+            const idealRatio = Math.max(0, Math.min(100, idealPct));
+            const left = Math.max(0, Math.min(
+                MINI_BAR_WIDTH - IDEAL_MARKER_WIDTH,
+                idealRatio * MINI_BAR_WIDTH / 100 - IDEAL_MARKER_WIDTH / 2
+            ));
+            this._ideal.set_position(this._scaled(left), 0);
+            this._ideal.visible = true;
+        } else {
+            this._ideal.visible = false;
+        }
     }
 }
 
@@ -203,7 +250,12 @@ class ProviderCell {
 
         this._scopedRows = [];
 
-        this._sub = new St.Label({ style_class: 'ai-cell-sub' });
+        this._sub = new St.Label({
+            style_class: 'ai-cell-sub',
+            x_expand: true,
+        });
+        this._sub.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+        this._sub.clutter_text.line_wrap = false;
         this.box.add_child(this._sub);
     }
 
@@ -227,10 +279,10 @@ class ProviderCell {
         return { box, lab, bar, pct };
     }
 
-    _setBarRow(row, pct) {
+    _setBarRow(row, pct, idealPct = null) {
         row.pct.text = formatPct(pct);
         row.pct.style_class = `ai-bar-pct ${severityClass(pct)}`.trim();
-        row.bar.setPct(pct);
+        row.bar.setPct(pct, idealPct);
     }
 
     _updateScopedRows(scoped) {
@@ -246,7 +298,11 @@ class ProviderCell {
         items.forEach((item, i) => {
             const row = this._scopedRows[i];
             row.lab.text = truncate(item.label, 16);
-            this._setBarRow(row, item.pct);
+            this._setBarRow(
+                row,
+                item.pct,
+                idealUsagePct(item.resets_at, scopedWindowSeconds(item))
+            );
         });
     }
 
@@ -264,8 +320,16 @@ class ProviderCell {
         const stale = !data.fetched_at ||
             (Date.now() / 1000 - data.fetched_at) > STALE_SECONDS;
 
-        this._setBarRow(this._fiveRow, five);
-        this._setBarRow(this._sevenRow, seven);
+        this._setBarRow(
+            this._fiveRow,
+            five,
+            idealUsagePct((data.five_hour || {}).resets_at, FIVE_HOUR_SECONDS)
+        );
+        this._setBarRow(
+            this._sevenRow,
+            seven,
+            idealUsagePct((data.seven_day || {}).resets_at, SEVEN_DAY_SECONDS)
+        );
         this._updateScopedRows(data.scoped);
 
         if (data.ok === false) {
@@ -338,7 +402,10 @@ class AiIndicator extends PanelMenu.Button {
 
         // 2x2 グリッドに並べるプロバイダセル
         this._grid = new St.Widget({
-            layout_manager: new Clutter.GridLayout({ orientation: Clutter.Orientation.VERTICAL }),
+            layout_manager: new Clutter.GridLayout({
+                orientation: Clutter.Orientation.VERTICAL,
+                column_homogeneous: true,
+            }),
             style_class: 'ai-provider-grid',
         });
         const gridItem = new PopupMenu.PopupBaseMenuItem({
@@ -346,30 +413,45 @@ class AiIndicator extends PanelMenu.Button {
             can_focus: false,
             style_class: 'ai-provider-grid-item',
         });
+        // PopupBaseMenuItem が左側に確保する空のチェックマーク領域をなくし、左右余白を揃える。
+        gridItem.setOrnament(PopupMenu.Ornament.HIDDEN);
         gridItem.add_child(this._grid);
         this.menu.addMenuItem(gridItem);
 
-        this._cells = PROVIDERS.map((provider, i) => {
-            const cell = new ProviderCell(provider);
-            this._grid.layout_manager.attach(
-                cell.box,
-                i % GRID_COLUMNS, Math.floor(i / GRID_COLUMNS), 1, 1
-            );
-            return cell;
-        });
+        // データがあるセルだけを _render() で詰めて配置する。
+        // 非表示セルを先に attach すると、空のグリッド行が残ってしまう。
+        this._cells = PROVIDERS.map(provider => new ProviderCell(provider));
+        this._gridSignature = '';
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
-        this._statusItem = new PopupMenu.PopupMenuItem('', {
+        this._footerItem = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
             can_focus: false,
             style_class: 'ai-usage-status',
         });
-        this.menu.addMenuItem(this._statusItem);
-
-        this._refreshItem = new PopupMenu.PopupMenuItem('今すぐ更新');
-        this._refreshItem.connect('activate', () => runFetch(() => this._render()));
-        this.menu.addMenuItem(this._refreshItem);
+        this._footerItem.setOrnament(PopupMenu.Ornament.HIDDEN);
+        const footer = new St.BoxLayout({
+            style_class: 'ai-usage-footer',
+            x_expand: true,
+        });
+        this._statusLabel = new St.Label({
+            style_class: 'ai-usage-status-label',
+            x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        this._refreshButton = new St.Button({
+            label: '今すぐ更新',
+            style_class: 'button ai-usage-refresh-button',
+            reactive: true,
+            can_focus: true,
+            track_hover: true,
+        });
+        this._refreshButton.connect('clicked', () => runFetch(() => this._render()));
+        footer.add_child(this._statusLabel);
+        footer.add_child(this._refreshButton);
+        this._footerItem.add_child(footer);
+        this.menu.addMenuItem(this._footerItem);
 
         this.menu.connect('open-state-changed', (menu, isOpen) => {
             if (isOpen) {
@@ -417,6 +499,7 @@ class AiIndicator extends PanelMenu.Button {
     _render() {
         // パネル: 取得できているプロバイダだけを `Cl 51/99`（5h/7d）形式で並べる
         const parts = [];
+        const visibleCells = [];
         let worst = 0;
         let anyStale = false;
         let anyFailed = false;
@@ -426,6 +509,7 @@ class AiIndicator extends PanelMenu.Button {
             const state = cell.render(readCache(cell.provider.id));
             if (!state)
                 continue;
+            visibleCells.push(cell);
 
             const { five, seven } = state;
             worst = Math.max(
@@ -445,6 +529,8 @@ class AiIndicator extends PanelMenu.Button {
             }
         }
 
+        this._reflowGrid(visibleCells);
+
         this._label.text = parts.length ? parts.join('  ') : 'AI —';
 
         const classes = ['ai-usage-panel-label'];
@@ -455,9 +541,27 @@ class AiIndicator extends PanelMenu.Button {
             classes.push('ai-usage-stale');
         this._label.style_class = classes.join(' ');
 
-        this._statusItem.label.text = parts.length
-            ? `最終更新 ${formatClock(latestFetch)}`
+        this._statusLabel.text = parts.length
+            ? `白線 = 理想ペース  ·  最終更新 ${formatClock(latestFetch)}`
             : 'まだ取得されていません';
+    }
+
+    _reflowGrid(visibleCells) {
+        const signature = visibleCells.map(cell => cell.provider.id).join(',');
+        if (signature === this._gridSignature)
+            return;
+
+        for (const cell of this._cells) {
+            if (cell.box.get_parent() === this._grid)
+                this._grid.remove_child(cell.box);
+        }
+        visibleCells.forEach((cell, i) => {
+            this._grid.layout_manager.attach(
+                cell.box,
+                i % GRID_COLUMNS, Math.floor(i / GRID_COLUMNS), 1, 1
+            );
+        });
+        this._gridSignature = signature;
     }
 
     destroy() {
@@ -475,6 +579,9 @@ class AiIndicator extends PanelMenu.Button {
             monitor.cancel();
         }
         this._monitors = [];
+        for (const cell of this._cells || [])
+            cell.box.destroy();
+        this._cells = [];
         super.destroy();
     }
 });

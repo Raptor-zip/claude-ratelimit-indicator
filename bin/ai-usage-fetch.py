@@ -209,6 +209,7 @@ def fetch_claude() -> dict:
                     "label": label,
                     "pct": float(pct),
                     "resets_at": to_epoch(item.get("resets_at")),
+                    "window_seconds": 7 * 24 * 60 * 60,
                 })
 
     extra = raw.get("extra_usage") or {}
@@ -497,12 +498,14 @@ def fetch_agy() -> dict:
                     "label": f"{name} 5h",
                     "pct": five["pct"],
                     "resets_at": five["resets_at"],
+                    "window_seconds": 5 * 60 * 60,
                 })
             if seven["pct"] is not None:
                 result["scoped"].append({
                     "label": f"{name} 7d",
                     "pct": seven["pct"],
                     "resets_at": seven["resets_at"],
+                    "window_seconds": 7 * 24 * 60 * 60,
                 })
     return result
 

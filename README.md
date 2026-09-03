@@ -13,8 +13,9 @@ right next to the clock in the GNOME top bar. Supported tools:
 All tools share a single panel item: a compact per-tool summary like
 `Cl 51/99  Cx 100/16  Km 41/13  Ag 1/0` (5h % / weekly %; tools with no cache yet are
 omitted). Click it for a menu with a section per tool: usage bars, time until reset, and
-per-model/per-group scopes. The weekly bar is divided into 7 segments so you can see at a
-glance whether you are ahead of or behind a one-day-per-segment pace.
+per-model/per-group scopes. A white marker on each bar shows the ideal usage at the
+current time when pacing the allowance evenly until reset, so you can compare actual and
+ideal usage directly. The weekly bar is also divided into 7 daily segments.
 
 ## How it works
 
@@ -89,7 +90,8 @@ Uninstall with `./install.sh uninstall`.
     or the network is down
   - Tools with no cache yet are omitted
 - **Menu** (compact 2×2 grid, one cell per tool):
-  - 5h / 7d usage bars with reset countdowns; the 7d bar has 7 division marks (one per day)
+  - 5h / 7d usage bars with reset countdowns and a white ideal-pace marker; the 7d bar
+    also has 7 division marks (one per day)
   - Per-model/per-group scopes when the provider reports any
     (Claude: per-model weekly scopes; AGY: the Claude/GPT model group's 5h and 7d buckets)
   - Last-updated time and a **Refresh now** button (opening the menu also triggers a fetch)
@@ -150,8 +152,9 @@ AI CLI のレートリミット（5 時間セッション枠 / 週間枠）の�
 パネルは 1 つのアイテムに集約され、`Cl 51/99  Cx 100/16  Km 41/13  Ag 1/0` のように
 ツールごとの 5 時間枠 % / 週間枠 % をコンパクトに並べて表示します（未取得のツールは
 省略）。クリックすると 2×2 グリッドのコンパクトなメニューが開き、ツールごとの使用率バーと
-リセットまでの残り時間を確認できます。週間バーは 7 分割の目安線入りで、1 日あたりの
-ペースに対して先行しているか遅れているかがひと目で分かります。
+リセットまでの残り時間を確認できます。各バーの白線は、リセットまで均等に枠を使う場合の
+現在時点での理想使用率です。実際の使用率と理想位置をバー上で直接比較できます。
+週間バーには 1 日ごとの 7 分割線も表示されます。
 
 ## 仕組み
 
@@ -221,7 +224,8 @@ cd ai-ratelimit-indicator
   - キャッシュが 15 分以上更新されないと淡色（タイマー停止・ネットワーク断の目印）
   - キャッシュが無いツールは省略
 - **メニュー**（2×2 グリッド、ツールごとのセル）:
-  - 5h / 7d の使用率バーとリセットまでの残り時間（7d バーは 7 分割の目安線つき）
+  - 5h / 7d の使用率バーとリセットまでの残り時間（白線は現在時点の理想ペース。
+    7d バーには 1 日ごとの 7 分割線も表示）
   - モデル別/グループ別のスコープ枠（プロバイダが返す場合のみ。
     Claude: モデル別の週間スコープ。AGY: Claude/GPT モデルグループの 5h と 7d 枠）
   - 最終更新時刻と「今すぐ更新」ボタン（メニューを開いた時点でも取得が走ります）
