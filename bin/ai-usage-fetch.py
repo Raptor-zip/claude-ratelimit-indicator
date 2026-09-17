@@ -230,16 +230,21 @@ def _pick_utilization(block) -> float | None:
 
 # ---------------------------------------------------------------- Codex
 
-def jwt_exp(token: str) -> float | None:
-    """JWT の exp クレームを署名検証なしで読む。"""
+def jwt_payload(token: str) -> dict:
+    """JWT の payload を署名検証なしで読む（期限・識別子の参照専用）。"""
     try:
         part = token.split(".")[1]
         part += "=" * (-len(part) % 4)
         payload = json.loads(base64.urlsafe_b64decode(part))
-        exp = payload.get("exp")
-        return float(exp) if isinstance(exp, (int, float)) else None
+        return payload if isinstance(payload, dict) else {}
     except Exception:
-        return None
+        return {}
+
+
+def jwt_exp(token: str) -> float | None:
+    """JWT の exp クレームを署名検証なしで読む。"""
+    exp = jwt_payload(token).get("exp")
+    return float(exp) if isinstance(exp, (int, float)) else None
 
 
 def fetch_codex() -> dict:
@@ -266,21 +271,73 @@ def fetch_codex() -> dict:
         "ChatGPT-Account-Id": account_id,
     })
 
+    return parse_codex_usage(raw)
+
+
+def parse_codex_usage(raw: dict) -> dict:
+    """Codex usage 応答を共通キャッシュ形式へ変換する。
+
+    primary_window / secondary_window は時間枠の種類を表す名前ではない。
+    契約によって primary だけが週間枠になることもあるため、応答に含まれる
+    limit_window_seconds で 5 時間枠と週間枠を判別する。
+    """
     rate = raw.get("rate_limit") or {}
-    primary = rate.get("primary_window") or {}    # 5 時間枠
-    secondary = rate.get("secondary_window") or {}  # 週間枠
     result = base_result()
-    result["five_hour"] = {
-        "pct": _pick_used_percent(primary),
-        "resets_at": _pick_reset_at(primary),
-    }
-    result["seven_day"] = {
-        "pct": _pick_used_percent(secondary),
-        "resets_at": _pick_reset_at(secondary),
-    }
+    result.update(_codex_rate_windows(rate))
     if rate.get("limit_reached"):
         result["severity"] = "exceeded"
+
+    for item in raw.get("additional_rate_limits") or []:
+        if not isinstance(item, dict):
+            continue
+        label = item.get("limit_name") or item.get("metered_feature") or "追加枠"
+        extra_rate = item.get("rate_limit") or {}
+        windows = _codex_rate_windows(extra_rate)
+        for key, suffix, seconds in (
+            ("five_hour", "5h", 5 * 60 * 60),
+            ("seven_day", "7d", 7 * 24 * 60 * 60),
+        ):
+            window = windows[key]
+            if window["pct"] is not None:
+                result["scoped"].append({
+                    "label": f"{label} {suffix}",
+                    "pct": window["pct"],
+                    "resets_at": window["resets_at"],
+                    "window_seconds": seconds,
+                })
+        if extra_rate.get("limit_reached"):
+            result["severity"] = "exceeded"
     return result
+
+
+def _codex_rate_windows(rate: dict) -> dict:
+    found = {"five_hour": None, "seven_day": None}
+    named = (
+        ("primary_window", rate.get("primary_window")),
+        ("secondary_window", rate.get("secondary_window")),
+    )
+    for _name, block in named:
+        if not isinstance(block, dict):
+            continue
+        seconds = block.get("limit_window_seconds")
+        if isinstance(seconds, (int, float)):
+            if seconds == 5 * 60 * 60:
+                found["five_hour"] = block
+            elif seconds == 7 * 24 * 60 * 60:
+                found["seven_day"] = block
+
+    # 古い応答やモックなど duration を持たない形式との後方互換。
+    if all(block is None for block in found.values()):
+        found["five_hour"] = rate.get("primary_window")
+        found["seven_day"] = rate.get("secondary_window")
+
+    return {
+        key: {
+            "pct": _pick_used_percent(block or {}),
+            "resets_at": _pick_reset_at(block or {}),
+        }
+        for key, block in found.items()
+    }
 
 
 def _pick_used_percent(block: dict) -> float | None:
@@ -401,7 +458,13 @@ def fetch_kimi(path: Path) -> dict:
             "resets_at": to_epoch(five.get("resetTime")),
         }
     # アカウント識別用（複数アカウント時のスロット割り当てと表示ラベルに使う）
-    result["account"] = str((raw.get("user") or {}).get("userId") or "")
+    user = raw.get("user") or {}
+    claims = jwt_payload(creds["access_token"])
+    # usage 応答が user/userId を返さない場合がある。同じアカウントの認証ファイルを
+    # 二重表示しないよう、Kimi の JWT に含まれる安定したユーザー識別子へフォールバックする。
+    result["account"] = str(
+        user.get("userId") or claims.get("user_id") or claims.get("sub") or ""
+    )
     result["cred_file"] = path.name
     return result
 
@@ -597,7 +660,8 @@ def run_kimi() -> bool:
         seen.add(uid)
         deduped.append(d)
     successes = deduped
-    multi = len(paths) > 1
+    # 認証ファイル数ではなく、重複排除後の実アカウント数で表示名を決める。
+    multi = len(successes) > 1
     ids = kimi_cache_ids()
     i = 0
     for data in successes:
