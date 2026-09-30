@@ -11,8 +11,9 @@ right next to the clock in the GNOME top bar. Supported tools:
 ![The indicator in the top bar, with its menu open](docs/screenshot.png)
 
 All tools share a single panel item: a compact per-tool summary like
-`Cl 51/99  Cx 100/16  Km 41/13  Ag 1/0` (5h % / weekly %; tools with no cache yet are
-omitted). Click it for a menu with a section per tool: usage bars, time until reset, and
+`Cl −24/+49  Cx --/−23` (5h / weekly deviation from ideal pace; tools with no cache yet are
+omitted, as are tools without credentials). They appear automatically after login and
+a successful fetch. Click it for a menu with a section per tool: usage bars, time until reset, and
 per-model/per-group scopes. A white marker on each bar shows the ideal usage at the
 current time when pacing the allowance evenly until reset, so you can compare actual and
 ideal usage directly. The weekly bar is also divided into 7 daily segments.
@@ -83,13 +84,15 @@ Uninstall with `./install.sh uninstall`.
 
 ## What you get
 
-- **Panel** (single item): `Cl 51/99  Cx 100/16  …` — per-tool 5h % / weekly %
-  - Yellow at 60%, bold red at 85% (based on the worst value)
+- **Panel** (single item): `Cl −24/+49  Cx --/−23` — per-tool 5h / weekly pace deviation
+  - Actual usage minus ideal usage, in percentage points: `+` means over pace, `−` means spare capacity
+  - Each tool is colored independently: green for spare capacity, yellow from +1 point, bold red from +20 points
+  - Missing usage/reset data or an elapsed reset shows `--`; rounded zero is neutral
   - Dimmed when the cache is more than 15 minutes old — your cue that the timer stopped
     or the network is down
   - Tools with no cache yet are omitted
 - **Menu** (compact 2×2 grid, one cell per tool):
-  - 5h / 7d usage bars with reset countdowns and a white ideal-pace marker; the 7d bar
+  - Actual percentages and signed pace deviations beside 5h / 7d usage bars with reset countdowns and a white ideal-pace marker; the 7d bar
     also has 7 division marks (one per day)
   - Per-model/per-group scopes when the provider reports any
     (Claude: per-model weekly scopes; AGY: the Claude/GPT model group's 5h and 7d buckets)
@@ -104,7 +107,7 @@ Change the polling interval by editing `OnUnitInactiveSec` in
 systemctl --user daemon-reload && systemctl --user restart ai-usage.timer
 ```
 
-Thresholds (`WARN_PCT` / `CRIT_PCT`), the stale cutoff (`STALE_SECONDS`) and the
+Pace thresholds (`PACE_WARN_POINTS` / `PACE_CRIT_POINTS`), the stale cutoff (`STALE_SECONDS`) and the
 provider list (`PROVIDERS`) are constants at the top of `extension.js`.
 
 ## Troubleshooting
@@ -148,9 +151,10 @@ AI CLI のレートリミット（5 時間セッション枠 / 週間枠）の�
 
 ![トップバーのインジケーターとメニューを開いた状態](docs/screenshot.png)
 
-パネルは 1 つのアイテムに集約され、`Cl 51/99  Cx 100/16  Km 41/13  Ag 1/0` のように
-ツールごとの 5 時間枠 % / 週間枠 % をコンパクトに並べて表示します（未取得のツールは
-省略）。クリックすると 2×2 グリッドのコンパクトなメニューが開き、ツールごとの使用率バーと
+パネルは 1 つのアイテムに集約され、`Cl −24/+49  Cx --/−23` のように
+ツールごとの 5 時間枠 / 週間枠の理想ペースとの差を並べて表示します（未取得のツールは
+省略。認証情報がないツールもパネル・メニューの両方から非表示になり、ログイン後の取得成功で
+自動表示されます）。クリックすると 2×2 グリッドのコンパクトなメニューが開き、ツールごとの使用率バーと
 リセットまでの残り時間を確認できます。各バーの白線は、リセットまで均等に枠を使う場合の
 現在時点での理想使用率です。実際の使用率と理想位置をバー上で直接比較できます。
 週間バーには 1 日ごとの 7 分割線も表示されます。
@@ -216,12 +220,14 @@ cd ai-ratelimit-indicator
 
 ## 表示
 
-- **パネル**（1 つのアイテム）: `Cl 51/99  Cx 100/16  …` — ツールごとの 5時間枠% / 週間枠%
-  - 60% 以上で黄色、85% 以上で赤太字（最も悪い値に基づく）
+- **パネル**（1 つのアイテム）: `Cl −24/+49  Cx --/−23` — 5時間枠 / 週間枠の理想との差
+  - 使用率 − 理想使用率（パーセントポイント）。`＋` は使い過ぎ、`−` は余裕
+  - ツールごとに、余裕は緑、+1 ポイントから黄色、+20 ポイントから赤太字
+  - 使用率・リセット時刻が不明、またはリセット時刻を過ぎた枠は `--`。丸めて 0 なら中立色
   - キャッシュが 15 分以上更新されないと淡色（タイマー停止・ネットワーク断の目印）
   - キャッシュが無いツールは省略
 - **メニュー**（2×2 グリッド、ツールごとのセル）:
-  - 5h / 7d の使用率バーとリセットまでの残り時間（白線は現在時点の理想ペース。
+  - 実際の使用率と理想との差、5h / 7d の使用率バーとリセットまでの残り時間（白線は現在時点の理想ペース。
     7d バーには 1 日ごとの 7 分割線も表示）
   - モデル別/グループ別のスコープ枠（プロバイダが返す場合のみ。
     Claude: モデル別の週間スコープ。AGY: Claude/GPT モデルグループの 5h と 7d 枠）
@@ -235,7 +241,7 @@ cd ai-ratelimit-indicator
 systemctl --user daemon-reload && systemctl --user restart ai-usage.timer
 ```
 
-色のしきい値（`WARN_PCT` / `CRIT_PCT`）、「古い」と見なす秒数（`STALE_SECONDS`）、
+理想との差の色のしきい値（`PACE_WARN_POINTS` / `PACE_CRIT_POINTS`）、「古い」と見なす秒数（`STALE_SECONDS`）、
 表示するプロバイダの一覧（`PROVIDERS`）は `extension.js` 冒頭の定数です。
 
 ## 困ったとき

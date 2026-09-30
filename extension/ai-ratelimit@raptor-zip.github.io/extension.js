@@ -46,8 +46,8 @@ const TICK_SECONDS = 30;
 // この秒数を超えて更新がないキャッシュは「古い」扱い
 const STALE_SECONDS = 15 * 60;
 
-const WARN_PCT = 60;
-const CRIT_PCT = 85;
+const PACE_WARN_POINTS = 1;
+const PACE_CRIT_POINTS = 20;
 
 const FIVE_HOUR_SECONDS = 5 * 60 * 60;
 const SEVEN_DAY_SECONDS = 7 * 24 * 60 * 60;
@@ -82,21 +82,32 @@ function formatPct(pct) {
     return `${Math.round(pct)}%`;
 }
 
-/* パネル用の短い表記（% なし、-- はデータ無し） */
-function formatPctShort(pct) {
-    if (typeof pct !== 'number' || !isFinite(pct))
-        return '--';
-    return `${Math.round(pct)}`;
+/* 使用率 − 理想使用率。正は超過、負は余裕（パーセントポイント）。 */
+function paceDelta(pct, idealPct) {
+    if (typeof pct !== 'number' || !isFinite(pct) ||
+        typeof idealPct !== 'number' || !isFinite(idealPct))
+        return null;
+    return pct - idealPct;
 }
 
-function severityClass(pct) {
-    if (typeof pct !== 'number' || !isFinite(pct))
+function formatPace(delta) {
+    if (typeof delta !== 'number' || !isFinite(delta))
+        return '--';
+    const rounded = Math.round(delta);
+    if (rounded === 0)
+        return '0';
+    return rounded > 0 ? `+${rounded}` : `−${Math.abs(rounded)}`;
+}
+
+function paceClass(delta) {
+    if (typeof delta !== 'number' || !isFinite(delta))
         return '';
-    if (pct >= CRIT_PCT)
+    const rounded = Math.round(delta);
+    if (rounded >= PACE_CRIT_POINTS)
         return 'ai-usage-crit';
-    if (pct >= WARN_PCT)
+    if (rounded >= PACE_WARN_POINTS)
         return 'ai-usage-warn';
-    return '';
+    return rounded < 0 ? 'ai-usage-ahead' : '';
 }
 
 function truncate(text, maxChars) {
@@ -213,7 +224,7 @@ class MiniBar {
             ratio * MINI_BAR_WIDTH / 100,
             ratio > 0 ? 2 : 0
         )));
-        this._fill.style_class = `ai-mini-bar-fill ${severityClass(pct)}`.trim();
+        this._fill.style_class = `ai-mini-bar-fill ${paceClass(paceDelta(pct, idealPct))}`.trim();
 
         if (typeof idealPct === 'number' && isFinite(idealPct)) {
             const idealRatio = Math.max(0, Math.min(100, idealPct));
@@ -272,16 +283,24 @@ class ProviderCell {
             style_class: 'ai-bar-pct',
             y_align: Clutter.ActorAlign.CENTER,
         });
+        const pace = new St.Label({
+            style_class: 'ai-bar-pace',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
         box.add_child(lab);
         box.add_child(bar.actor);
         box.add_child(pct);
+        box.add_child(pace);
         this.box.add_child(box);
-        return { box, lab, bar, pct };
+        return { box, lab, bar, pct, pace };
     }
 
     _setBarRow(row, pct, idealPct = null) {
         row.pct.text = formatPct(pct);
-        row.pct.style_class = `ai-bar-pct ${severityClass(pct)}`.trim();
+        row.pct.style_class = `ai-bar-pct ${paceClass(paceDelta(pct, idealPct))}`.trim();
+        const delta = paceDelta(pct, idealPct);
+        row.pace.text = formatPace(delta);
+        row.pace.style_class = `ai-bar-pace ${paceClass(delta)}`.trim();
         row.bar.setPct(pct, idealPct);
     }
 
@@ -308,8 +327,10 @@ class ProviderCell {
 
     /* data はキャッシュ JSON。null = 未取得。戻り値はパネル描画用の状態 */
     render(data) {
-        this.box.visible = !!data;
-        if (!data)
+        // ログアウト後に前回の成功データが残っていても、未認証なら表示しない。
+        const visible = !!data && !(data.ok === false && data.error === 'no_credentials');
+        this.box.visible = visible;
+        if (!visible)
             return null;
 
         // キャッシュ側のラベル（複数アカウントの Kimi など）があればそれを使う
@@ -353,8 +374,10 @@ class ProviderCell {
         }
 
         return {
-            five,
-            seven,
+            fiveDelta: paceDelta(five, idealUsagePct(
+                (data.five_hour || {}).resets_at, FIVE_HOUR_SECONDS)),
+            sevenDelta: paceDelta(seven, idealUsagePct(
+                (data.seven_day || {}).resets_at, SEVEN_DAY_SECONDS)),
             stale,
             failed: data.ok === false,
             hasData: !!data.fetched_at,
@@ -398,7 +421,19 @@ class AiIndicator extends PanelMenu.Button {
             y_align: Clutter.ActorAlign.CENTER,
             style_class: 'ai-usage-panel-label',
         });
-        this.add_child(this._label);
+        this._label.text = 'AI —';
+        this._panelBox = new St.BoxLayout();
+        this._panelBox.add_child(this._label);
+        this._panelLabels = new Map(PROVIDERS.map(provider => {
+            const label = new St.Label({
+                y_align: Clutter.ActorAlign.CENTER,
+                style_class: 'ai-usage-panel-label',
+                visible: false,
+            });
+            this._panelBox.add_child(label);
+            return [provider.id, label];
+        }));
+        this.add_child(this._panelBox);
 
         // 2x2 グリッドに並べるプロバイダセル
         this._grid = new St.Widget({
@@ -497,53 +532,41 @@ class AiIndicator extends PanelMenu.Button {
     }
 
     _render() {
-        // パネル: 取得できているプロバイダだけを `Cl 51/99`（5h/7d）形式で並べる
-        const parts = [];
+        // パネル: 理想ペースとの差を 5h/7d の順に表示する。
         const visibleCells = [];
-        let worst = 0;
-        let anyStale = false;
-        let anyFailed = false;
         let latestFetch = 0;
 
         for (const cell of this._cells) {
             const state = cell.render(readCache(cell.provider.id));
+            const label = this._panelLabels.get(cell.provider.id);
+            label.visible = !!state;
             if (!state)
                 continue;
             visibleCells.push(cell);
-
-            const { five, seven } = state;
-            worst = Math.max(
-                worst,
-                typeof five === 'number' ? five : 0,
-                typeof seven === 'number' ? seven : 0
-            );
-            anyStale = anyStale || state.stale;
-            anyFailed = anyFailed || (state.failed && !state.hasData);
             latestFetch = Math.max(latestFetch, state.fetchedAt);
 
+            const { fiveDelta, sevenDelta } = state;
             const short = state.short || cell.provider.short;
-            if (state.failed && !state.hasData) {
-                parts.push(`${short} ⚠`);
-            } else {
-                parts.push(`${short} ${formatPctShort(five)}/${formatPctShort(seven)}`);
-            }
+            label.text = state.failed && !state.hasData
+                ? `${short} ⚠`
+                : `${short} ${formatPace(fiveDelta)}/${formatPace(sevenDelta)}`;
+
+            // 各ツールを個別に色付け。欠測値は余裕として扱わない。
+            const deltas = [fiveDelta, sevenDelta].filter(d => typeof d === 'number' && isFinite(d));
+            const classes = ['ai-usage-panel-label'];
+            if (deltas.length)
+                classes.push(paceClass(Math.max(...deltas)));
+            if (state.stale || state.failed)
+                classes.push('ai-usage-stale');
+            label.style_class = classes.filter(Boolean).join(' ');
         }
 
         this._reflowGrid(visibleCells);
-
-        this._label.text = parts.length ? parts.join('  ') : 'AI —';
-
-        const classes = ['ai-usage-panel-label'];
-        const sev = severityClass(worst);
-        if (sev)
-            classes.push(sev);
-        if (anyStale || anyFailed || !parts.length)
-            classes.push('ai-usage-stale');
-        this._label.style_class = classes.join(' ');
-
-        this._statusLabel.text = parts.length
-            ? `白線 = 理想ペース  ·  最終更新 ${formatClock(latestFetch)}`
-            : 'まだ取得されていません';
+        this._label.visible = !visibleCells.length;
+        this._label.style_class = 'ai-usage-panel-label ai-usage-stale';
+        this._statusLabel.text = visibleCells.length
+            ? `＋超過 / −余裕（pt） · 5h/7d · 更新 ${formatClock(latestFetch)}`
+            : 'ログイン済みのツールのデータがありません';
     }
 
     _reflowGrid(visibleCells) {

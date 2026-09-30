@@ -7,6 +7,10 @@
     color: #f5c211;
 }
 
+.ai-usage-panel-label.ai-usage-ahead {
+    color: #8ff0a4;
+}
+
 .ai-usage-panel-label.ai-usage-crit {
     color: #ff7b63;
     font-weight: bold;
@@ -27,7 +31,7 @@
 .ai-provider-cell {
     spacing: 1px;
     padding: 2px 8px;
-    width: 220px;
+    width: 280px;
 }
 
 .ai-provider-name {
@@ -61,6 +65,27 @@
     font-weight: bold;
 }
 
+.ai-bar-pace {
+    font-size: 0.85em;
+    font-feature-settings: "tnum";
+    width: 42px;
+    text-align: right;
+}
+
+.ai-bar-pace.ai-usage-warn {
+    color: #f5c211;
+}
+
+.ai-bar-pace.ai-usage-crit {
+    color: #ff7b63;
+    font-weight: bold;
+}
+
+.ai-bar-pace.ai-usage-ahead,
+.ai-bar-pct.ai-usage-ahead {
+    color: #8ff0a4;
+}
+
 .ai-mini-bar {
     width: 110px;
     height: 11px;
@@ -85,6 +110,10 @@
 
 .ai-mini-bar-fill.ai-usage-crit {
     background-color: #ff7b63;
+}
+
+.ai-mini-bar-fill.ai-usage-ahead {
+    background-color: #8ff0a4;
 }
 
 /* リセットまで均等に使う場合の、現在時刻における理想使用率 */

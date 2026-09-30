@@ -628,7 +628,10 @@ def run_kimi() -> bool:
     try:
         paths = kimi_cred_paths()
     except FetchError as e:
-        record_error("kimi", e.kind, e.message)
+        # 全認証ファイルが消えたとき、複数アカウントの古い成功キャッシュも未認証にする。
+        for pid in kimi_cache_ids():
+            if pid == "kimi" or cache_path(pid).exists():
+                record_error(pid, e.kind, e.message)
         return False
 
     ok = True
