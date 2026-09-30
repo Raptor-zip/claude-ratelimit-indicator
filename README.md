@@ -55,9 +55,8 @@ account only appears separately once it has its own credentials file.
 
 ## Requirements
 
-- GNOME Shell 42 (tested on Ubuntu 22.04, X11).
-  43 and 44 will most likely work — add the version to `shell-version` in
-  `metadata.json` and try it. GNOME 45+ needs an ESM port and is not supported yet.
+- GNOME Shell 42, 45 or 46. The installer selects the legacy entry point for 42
+  and builds an ESM entry point for 45/46. Other versions are rejected before installation.
 - Python 3.10+ (standard library only)
 - For **AGY**: `python3-secretstorage` (to read the token from the GNOME keyring) and an
   unlocked login keyring. Without it the other three providers still work.
@@ -75,10 +74,10 @@ cd ai-ratelimit-indicator
 ./install.sh
 ```
 
-Then activate it:
-
-1. Restart GNOME Shell — `Alt+F2` → `r` → `Enter` (X11 only; on Wayland, log out and back in)
-2. `gnome-extensions enable ai-ratelimit@raptor-zip.github.io`
+The installer enables the extension automatically. Restart GNOME Shell —
+`Alt+F2` → `r` → `Enter` (X11 only; on Wayland, log out and back in) — to load
+the installed files. If it remains disabled, run
+`gnome-extensions enable ai-ratelimit@raptor-zip.github.io`.
 
 Uninstall with `./install.sh uninstall`.
 
@@ -140,7 +139,7 @@ MIT
 # 日本語
 
 AI CLI のレートリミット（5 時間セッション枠 / 週間枠）の使用率を、GNOME トップバーの
-時計の横に表示する GNOME Shell 42 拡張機能です。対応ツール:
+時計の横に表示する GNOME Shell 42 / 45 / 46 対応の拡張機能です。対応ツール:
 
 - **Claude**（Claude Code）
 - **Codex**（OpenAI Codex CLI、ChatGPT ログイン）
@@ -190,9 +189,8 @@ credentials ファイルが増えた時点で自動的に別セルに分かれ�
 
 ## 動作要件
 
-- GNOME Shell 42（Ubuntu 22.04 / X11 で動作確認）。
-  43・44 でもおそらく動きますが未検証です（`metadata.json` の `shell-version` に追記すれば
-  試せます）。GNOME 45 以降は ESM への移植が必要で未対応です。
+- GNOME Shell 42 / 45 / 46。インストーラーがバージョンに応じて、42 用の従来形式か
+  45 / 46 用の ESM 形式を生成します。他のバージョンではインストール前に停止します。
 - Python 3.10 以降（標準ライブラリのみ）
 - **AGY を使う場合**: `python3-secretstorage`（キーリングからトークンを読むため）と、
   ログイン時にアンロックされる GNOME キーリング。無くても他の 3 プロバイダは動きます。
@@ -210,10 +208,9 @@ cd ai-ratelimit-indicator
 ./install.sh
 ```
 
-そのあと有効化します:
-
-1. `Alt+F2` → `r` → `Enter` で GNOME Shell を再起動（X11 のみ。Wayland は再ログイン）
-2. `gnome-extensions enable ai-ratelimit@raptor-zip.github.io`
+インストーラーが自動で有効化します。インストールしたファイルを読み込むため、
+`Alt+F2` → `r` → `Enter` で GNOME Shell を再起動してください（X11 のみ。Wayland は再ログイン）。
+無効のままなら `gnome-extensions enable ai-ratelimit@raptor-zip.github.io` を実行してください。
 
 アンインストールは `./install.sh uninstall` です。
 

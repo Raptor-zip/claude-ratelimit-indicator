@@ -38,17 +38,20 @@ uninstall() {
 }
 
 install_all() {
+    # GNOME 45 changed extensions to ESM. Validate before changing installed files.
+    local shell_major
+    shell_major=$(gnome-shell --version | sed -nE 's/.* ([0-9]+)\..*/\1/p')
+    case "$shell_major" in
+        42|45|46) ;;
+        *) echo "Unsupported GNOME Shell: ${shell_major:-unknown} (supported: 42, 45, 46)" >&2; return 1 ;;
+    esac
+
     # Fetcher -> ~/.local/bin so nothing depends on where this repo lives
     mkdir -p "$BIN_DIR"
     install -m 755 "$SRC/bin/ai-usage-fetch.py" "$BIN_DIR/ai-usage-fetch"
 
     # GNOME Shell extension (copied, not symlinked: some setups refuse symlinks)
-    mkdir -p "$EXT_DIR"
-    install -m 644 \
-        "$SRC/extension/$UUID/metadata.json" \
-        "$SRC/extension/$UUID/extension.js" \
-        "$SRC/extension/$UUID/stylesheet.css" \
-        "$EXT_DIR/"
+    python3 "$SRC/bin/build-extension.py" "$SRC/extension/$UUID" "$EXT_DIR" "$shell_major"
 
     # systemd user timer
     mkdir -p "$UNIT_DIR"
@@ -63,6 +66,18 @@ install_all() {
     remove_legacy
     systemctl --user daemon-reload
 
+    # Remember activation even if the running Shell has not discovered new files yet.
+    python3 - "$UUID" <<'PY'
+import sys
+from gi.repository import Gio
+settings = Gio.Settings.new('org.gnome.shell')
+enabled = settings.get_strv('enabled-extensions')
+if sys.argv[1] not in enabled:
+    settings.set_strv('enabled-extensions', enabled + [sys.argv[1]])
+    Gio.Settings.sync()
+PY
+    gnome-extensions enable "$UUID" 2>/dev/null || true
+
     cat <<EOF
 
 Installed:
@@ -70,9 +85,9 @@ Installed:
   fetcher   : $BIN_DIR/ai-usage-fetch
   timer     : $UNIT_DIR/ai-usage.timer (every 2 minutes)
 
-To activate:
-  1) Restart GNOME Shell: Alt+F2 -> r -> Enter  (X11 only; on Wayland, log out and back in)
-  2) gnome-extensions enable $UUID
+Activation requested. To load the installed files:
+  Restart GNOME Shell: Alt+F2 -> r -> Enter  (X11 only; on Wayland, log out and back in)
+  If still disabled: gnome-extensions enable $UUID
 EOF
 }
 
